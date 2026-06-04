@@ -1,4 +1,29 @@
-# Docker-bridge-delay-BW-control
+# Docker Bridge Network Emulator
+
+Bash-based network emulation tool for Docker bridge networks.
+
+It applies Linux `tc` / `netem` rules on bridge-side veth interfaces to emulate per-container latency and bandwidth limits without modifying the application containers.
+
+## What this project demonstrates
+
+- Docker bridge and veth interface inspection
+- Linux traffic control with `tc`
+- Delay injection with `netem`
+- Bandwidth shaping with HTB/CBQ
+- Per-source traffic filtering
+- Container-to-container network emulation
+
+## Status
+
+This is an experimental networking utility and portfolio project. It is useful for demonstrating Linux container networking and traffic-control concepts, but it is not currently packaged as a production-grade CLI.
+
+## Requirements
+
+- Linux host
+- Docker
+- Docker bridge networking
+- `tc` / `iproute2`
+- Root or sudo privileges
 
 ## Motivation
 If you have multiple Docker containers connected together through a bridge, then using this sample script, you can modify the delays from one container to another with `Linux traffic controller (tc)`" [[1]](#1). This control is done inside the bridge and not from the inside of the containers, which is useful if you do not want to touch the containers. It is also possible to control the `Bandwidth` as well.

@@ -26,12 +26,13 @@ This is an experimental networking utility and portfolio project. It is useful f
 - Root or sudo privileges
 
 ## Motivation
-If you have multiple Docker containers connected together through a bridge, then using this sample script, you can modify the delays from one container to another with `Linux traffic controller (tc)`" [[1]](#1). This control is done inside the bridge and not from the inside of the containers, which is useful if you do not want to touch the containers. It is also possible to control the `Bandwidth` as well.
+When multiple Docker containers are connected through a bridge network, it can be useful to emulate latency and bandwidth constraints between container pairs. This project applies Linux traffic-control using `tc`" [[1]](#1) rules on the host-side veth interfaces connected to the Docker bridge. This means the application containers do not need to be modified. The tool can emulate both delay and bandwidth constraints for traffic between containers.
+If you have multiple Docker containers connected through a bridge, then using this sample script, you can modify the delays from one container to another with `Linux traffic controller (tc)`" [[1]](#1). This control is done inside the bridge and not from the inside of the containers, which is useful if you do not want to touch the containers. It is also possible to control the `Bandwidth` as well.
 
 ## Introduction
-`CBQ` and `HTB` are two of the classful qdiscs in `tc`. `CBQ` (Class Based Queueing) is a classful qdisc that implements a rich link-sharing hierarchy of classes. It contains shaping elements as well as prioritizing capabilities. Shaping is performed using link idle time calculations based on the timing of dequeue events and underlying link bandwidth" [[2]](#2). `HTB` is meant as a more understandable and intuitive replacement for the `CBQ` qdisc in Linux. Both `CBQ` and `HTB` help you to control the use of the outbound bandwidth on a given link. Both allow you to use one physical link to simulate several slower links and to send different kinds of traffic on different simulated links. In both cases, you have to specify how to divide the physical link into simulated links and how to decide which simulated link to use for a given packet to be sent. Unlike `CBQ`, `HTB` shapes traffic based on the `Token Bucket Filter` algorithm which does not depend on interface characteristics and so does not need to know the underlying bandwidth of the outgoing interface" [[3]](#3).
+`CBQ` and `HTB` are two of the classful qdiscs in `tc`. `CBQ` (Class-Based Queueing) is a classful qdisc that implements a rich link-sharing hierarchy of classes. It contains shaping elements as well as prioritizing capabilities. Shaping is performed using link idle time calculations based on the timing of dequeue events and underlying link bandwidth" [[2]](#2). `HTB` is meant as a more understandable and intuitive replacement for the `CBQ` qdisc in Linux. Both `CBQ` and `HTB` help you to control the use of the outbound bandwidth on a given link. Both allow you to use one physical link to simulate several slower links and to send different kinds of traffic on different simulated links. In both cases, you have to specify how to divide the physical link into simulated links and how to decide which simulated link to use for a given packet to be sent. Unlike `CBQ`, `HTB` shapes traffic based on the `Token Bucket Filter` algorithm which does not depend on interface characteristics and so does not need to know the underlying bandwidth of the outgoing interface" [[3]](#3).
 
-The control of the delay from `container A` towards `container B` can be done in `VethX` which connects the bridge to `container B` (destination container). So, for applying the different delays for data coming from different source containers, it is needed to distinguish between the source of the data in `VethX`. As every container has an IP address, this can be done by filtering the source IP address of the sender.
+The control of the delay from `container A` towards `container B` can be done in `VethX` which connects the bridge to `container B` (destination container). So, for applying the different delays for data coming from different source containers, it is necessary to distinguish between the sources of the data in `VethX`. As every container has an IP address, this can be done by filtering the source IP address of the sender.
 
 A simple structure with an internal view of `VethX` in a bridge and the containers is demonstrated here: 
 
@@ -40,7 +41,7 @@ A simple structure with an internal view of `VethX` in a bridge and the containe
   <img src="./delay2.png" width="300" height="250" /> 
 </p>
 
-## Schematic of the structure of the classes, qdiscs and filters
+## Schematic of classes, qdiscs, and filters
   ```bash
   #   (f) --<<          1:0            root handle 1:0 cbq|htb "qdisc"  
   #   (i) |              |                                           
@@ -54,32 +55,65 @@ A simple structure with an internal view of `VethX` in a bridge and the containe
   #              delay)     delay)
   ```
 
-## Using the script
+## Usage
 
 You can use the scripts in two ways:
 
-A. Starting a test structure using    
-  ```bash
-  sudo DBDelay.sh test X [cbq|htb]
-  ```
-  Where `X` is the desired number of the containers. This will build a network called `testNet` with a bridge named `myTestBridge` and the containers named `Client1` to `ClientX`.  It will ask for each container the total bandwidth it accepts from the bridge (through VethX), the delay, and the bandwidth regarding every other container towards this one.
-  You need to select between `cbq` and `htb`.
+A. Create a test Docker bridge network
+
+```bash
+sudo ./DBDelay.sh test <container-count> <htb|cbq>
+```
+
+Example:
+
+```bash
+sudo ./DBDelay.sh test 3 htb
+```
+
+This creates a Docker network named `myTestBridge` using the bridge driver and starts containers named `client1` to `clientN`.
+
+The script then asks for:
+
+- The total inbound bandwidth allowed toward each destination container
+- The bandwidth limit for each source-to-destination flow
+- The delay for each source-to-destination flow
+
+After testing, clean the generated structure:
+
+```bash
+sudo ./DBDelay.sh clean
+```
+
+B. Apply rules to an existing Docker bridge network
+
+```bash
+sudo ./DBDelay.sh modify <docker-network-name> [htb|cbq]
+```
+
+Example:
+
+```bash
+sudo ./DBDelay.sh modify my_existing_network htb
+```
+
+If no qdisc type is provided, the script defaults to `htb`.
+
+To list Docker networks:
+
+```bash
+docker network ls
+```
+
+For this mode to work, the target containers must be directly attached to the selected Docker bridge network.
+
+## Important notes
+
+Use symmetric delays between each pair of containers if you want round-trip behavior to be predictable.
+
+Also, make sure that the sum of per-flow bandwidth values assigned to a destination veth does not exceed the total bandwidth assigned to that veth.
   
-  In this case, after finishing your tests, you can clean the test structure using
-  ```bash
-  sudo DBDelay.sh clean
-  ``` 
-B. Applying the script on an existing bridge. 
-  1. Run the script as
-  ```bash
-  sudo DBDelay.sh modify BRIDGE_NAME
-  ``` 
-  Where ` BRIDGE_NAME` is the name of your bridge that you want to apply your desired delay and bandwidth control (use `docker network ls` in case you do not remember the bridge name). Similar to the first test network, it will ask for each container the total bandwidth it accepts from the bridge (through `VethX`), the delay, and the bandwidth regarding every other container towards this one. For this one to work, the containers must be directly connected to the bridge which is the target of this script.
-  
-  ## Important ##
-  Do not forget to use symmetric delays between each pair of containers and keep in mind that the sum of the total bandwidth assigned to flows crossing `VethX` should not exceed the main bandwidth assigned to this `VethX`. Also, the sum of the total bandwidth in the bridge should be less than `1/10` of the available system bandwidth.
-  
-  ## References
+## References
 <a id="1">[1]</a> 
 https://man7.org/linux/man-pages/man8/tc.8.html 
 tc(8) — Linux manual page

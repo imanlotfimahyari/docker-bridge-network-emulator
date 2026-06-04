@@ -1,9 +1,12 @@
-FROM ubuntu:18.04
+FROM ubuntu:24.04
+
 WORKDIR /work
-RUN apt-get update && apt-get install -y \
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     iproute2 \
     iputils-ping \
-    net-tools \
-    iperf \
-    net-tools \
+    iperf3 \
+    ca-certificates \
   && rm -rf /var/lib/apt/lists/*
+
+CMD ["/bin/bash"]
